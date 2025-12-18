@@ -1,0 +1,13 @@
+{
+  "diversity": {
+    "minDissentRatio": 0.3,
+    "requireScepticForDecisions": true
+  },
+  "claims": {
+    "defaultTtlSeconds": 900,
+    "maxTtlSeconds": 3600
+  },
+  "evidence": {
+    "maxOutputChars": 20000
+  }
+}
