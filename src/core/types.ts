@@ -1,6 +1,7 @@
 export type TaskId = string;
 export type IntentId = string;
 export type EvidenceId = string;
+export type ChangelogId = string;
 
 export interface Task {
   id: TaskId;
@@ -32,6 +33,20 @@ export interface Evidence {
   agentId: string;
   command: string;
   output: string;
+  createdAt: number;
+}
+
+export type ChangeType = 'create' | 'modify' | 'delete';
+
+export interface ChangelogEntry {
+  id: ChangelogId;
+  taskId?: TaskId;
+  agentId: string;
+  filePath: string;
+  changeType: ChangeType;
+  summary: string;
+  diffSnippet?: string;
+  commitHash?: string;
   createdAt: number;
 }
 

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hall": {
+      "command": "node",
+      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+    }
+  }
+}

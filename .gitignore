@@ -10,6 +10,10 @@ dist/
 
 # Database
 .hall/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+hall.db
 
 # IDE
 .idea/

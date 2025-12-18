@@ -56,10 +56,27 @@ function migrate(db: HallDb) {
       FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE
     );
 
+    -- Changelog for tracking all agent changes (git-bisect-like debugging)
+    CREATE TABLE IF NOT EXISTS changelog (
+      id TEXT PRIMARY KEY,
+      task_id TEXT,
+      agent_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      change_type TEXT NOT NULL,  -- 'create', 'modify', 'delete'
+      summary TEXT NOT NULL,      -- Brief description of change
+      diff_snippet TEXT,          -- Optional: key lines changed
+      commit_hash TEXT,           -- Optional: git commit if available
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE SET NULL
+    );
+
     -- Performance indexes
     CREATE INDEX IF NOT EXISTS idx_intents_task_id ON intents(task_id);
     CREATE INDEX IF NOT EXISTS idx_evidence_task_id ON evidence(task_id);
     CREATE INDEX IF NOT EXISTS idx_claims_expires_at ON claims(expires_at);
     CREATE INDEX IF NOT EXISTS idx_claims_file_path ON claims(file_path);
+    CREATE INDEX IF NOT EXISTS idx_changelog_file_path ON changelog(file_path);
+    CREATE INDEX IF NOT EXISTS idx_changelog_created_at ON changelog(created_at);
+    CREATE INDEX IF NOT EXISTS idx_changelog_agent_id ON changelog(agent_id);
   `);
 }

@@ -1,0 +1,115 @@
+# Project Instructions
+
+**IMPORTANT: Always use HALL MCP tools for any code changes.** Multiple agents may be working on this codebase simultaneously. Check for conflicts and claim files before editing.
+
+## Session Startup (Do This First!)
+
+When starting a session, AUTOMATICALLY run:
+```
+hall_status()      # Check server status
+hall_task_list()   # See pending/active tasks
+hall_claims_list() # See what files are claimed
+```
+
+This gives you situational awareness of what other agents are working on.
+
+## Code Quality Requirements
+
+Before releasing any file claims, you MUST:
+
+1. **Run tests** - All existing tests must pass
+2. **No regressions** - Don't break what works
+3. **Attach evidence** - Prove your changes work via `hall_evidence_attach`
+4. **Small, focused changes** - One concern per task, don't scope creep
+5. **Review your own code** - Read it back before committing
+
+Do NOT optimize for speed of completion. Optimize for correctness and maintainability. If unsure, ask the user rather than guessing.
+
+## Multi-Agent Coordination with HALL MCP
+
+This project uses **HALL (Holistic Agent Live Lobby)** for multi-agent coordination. When multiple AI agents work on this codebase simultaneously, they MUST use HALL to prevent conflicts and coordinate their work.
+
+### Enforced Workflow
+
+**HALL enforces this workflow at the server level. You cannot skip steps - the tools will reject your requests.**
+
+1. **Check for conflicts** before touching any files:
+   ```
+   hall_overlap_check(files: ["path/to/file.ts", ...])
+   ```
+
+2. **Find or create a task** for your work:
+   ```
+   hall_task_list()  # Check existing tasks
+   hall_task_create(title: "Your task", description: "Details")
+   ```
+
+3. **Declare your intent** (REQUIRED before claiming):
+   ```
+   hall_intent_post(
+     taskId: "task-id",
+     agentId: "your-unique-id",
+     files: ["files/you/will/edit.ts"],
+     boundaries: "What you WON'T touch",
+     acceptanceCriteria: "REQUIRED: How to verify success (min 10 chars)"
+   )
+   ```
+
+4. **Claim files** (will fail without intent):
+   ```
+   hall_claim(agentId: "your-unique-id", files: ["file.ts"], ttlSeconds: 900)
+   ```
+
+5. **Make your changes** to the claimed files
+
+6. **Log each change** to the changelog (do this AFTER each file edit):
+   ```
+   hall_changelog_log(
+     agentId: "your-unique-id",
+     filePath: "path/to/edited/file.ts",
+     changeType: "modify",  // or "create" or "delete"
+     summary: "Added error handling to login function",
+     taskId: "task-id"
+   )
+   ```
+
+7. **Attach evidence** (REQUIRED before releasing):
+   ```
+   hall_evidence_attach(
+     taskId: "task-id",
+     agentId: "your-unique-id",
+     command: "npm test",
+     output: "All tests passed"
+   )
+   ```
+
+8. **Release claims** (will fail without evidence):
+   ```
+   hall_claim_release(agentId: "your-unique-id", files: ["file.ts"])
+   ```
+
+### Debugging with Changelog
+
+When investigating bugs or issues, search the changelog:
+```
+hall_changelog_search(
+  filePath: "suspect/file.ts",
+  query: "error handling",
+  since: 1702900000000
+)
+```
+
+### Agent Identity
+
+Each agent instance MUST use a unique `agentId`. Suggested format:
+- `claude-code-{session-hash}`
+- `cursor-{timestamp}`
+- `agent-{random-id}`
+
+### Conflict Resolution
+
+If `hall_overlap_check` or `hall_claim` returns conflicts:
+1. Check `hall_claims_list()` to see who holds the files
+2. Wait for the other agent to release, OR
+3. Coordinate by creating an intent explaining your needs
+4. Work on non-conflicting files in the meantime

@@ -97,11 +97,78 @@ npm run build
 npm run mcp   # stdio transport
 ```
 
-See [docs/MCP.md](docs/MCP.md) for setup guides for Claude Code, Cursor, and other tools.
+### IDE Setup
+
+See [docs/IDE-SETUP.md](docs/IDE-SETUP.md) for detailed setup instructions for:
+- Claude Code
+- Cursor
+- Google AntiGravity
+- OpenCode
+- VS Code with Continue
+
+### Project Templates
+
+Copy templates from `templates/` to enable HALL in your projects:
+
+```bash
+# For Claude Code
+cp templates/CLAUDE.md.template /your/project/CLAUDE.md
+
+# For Cursor
+cp templates/.cursorrules.template /your/project/.cursorrules
+
+# For project-level MCP config (any tool)
+cp templates/.mcp.json.template /your/project/.mcp.json
+# Then edit .mcp.json to set the correct path to HALL
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `hall_status` | Get server status (tasks, intents, claims, evidence, changelog) |
+| `hall_task_create` | Create a new task |
+| `hall_task_list` | List recent tasks |
+| `hall_task_get` | Get task with intents and evidence |
+| `hall_intent_post` | Declare intent before editing (required) |
+| `hall_claim` | Claim exclusive file access (requires intent) |
+| `hall_claim_release` | Release claims (requires evidence) |
+| `hall_claims_list` | List all active claims |
+| `hall_overlap_check` | Check for conflicts before claiming |
+| `hall_evidence_attach` | Attach proof of work |
+| `hall_changelog_log` | Log file changes for debugging |
+| `hall_changelog_search` | Search change history |
+
+See [docs/MCP.md](docs/MCP.md) for detailed tool documentation.
+
+## Enforced Workflow
+
+HALL enforces quality at the server level:
+
+1. **Intent before claim** - `hall_claim` rejects if no intent declared
+2. **Evidence before release** - `hall_claim_release` rejects if no evidence attached
+3. **Acceptance criteria required** - `hall_intent_post` requires criteria (min 10 chars)
+
+This prevents agents from cutting corners.
+
+## Changelog Feature
+
+Track all agent changes for git-bisect-like debugging:
+
+```bash
+# Log a change
+hall_changelog_log(agentId, filePath, changeType, summary)
+
+# Search history
+hall_changelog_search(filePath: "broken/file.ts", since: timestamp)
+```
+
+Find exactly when and who introduced an issue.
 
 ## Next steps
 
 1. ~~Add MCP server wrapper so Claude Code, Cursor, OpenCode, Codex, AntiGravity can call `hall.*` tools.~~ Done!
-2. Add a gate runner that can execute your repo-specific checks and publish receipts.
-3. Add symbol-level overlap detection (tree-sitter) once file-level is proving useful.
+2. ~~Add changelog for debugging when issues were introduced.~~ Done!
+3. Add a gate runner that can execute your repo-specific checks and publish receipts.
+4. Add symbol-level overlap detection (tree-sitter) once file-level is proving useful.
 

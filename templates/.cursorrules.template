@@ -1,0 +1,68 @@
+# Project Rules
+
+**IMPORTANT: Always use HALL MCP tools for any code changes.** Multiple agents may be working on this codebase simultaneously. Check for conflicts and claim files before editing.
+
+## Session Startup (Do First!)
+
+AUTOMATICALLY run at session start:
+- `hall_status()` - Check server status
+- `hall_task_list()` - See pending tasks
+- `hall_claims_list()` - See claimed files
+
+## Code Quality Requirements
+
+Before releasing claims:
+1. Run tests - all must pass
+2. No regressions - don't break existing functionality
+3. Log changes via `hall_changelog_log`
+4. Attach evidence via `hall_evidence_attach`
+5. Keep changes small and focused
+6. Review your own code before finishing
+
+Optimize for correctness, not speed. Ask the user if uncertain.
+
+## Multi-Agent Coordination (HALL MCP)
+
+This project uses HALL for multi-agent coordination. **The workflow is enforced at the server level - you cannot skip steps.**
+
+### Before Any Code Changes
+
+1. **Check conflicts**: `hall_overlap_check(files: [...])`
+2. **Get/create task**: `hall_task_list()` or `hall_task_create(...)`
+3. **Post intent** (REQUIRED before claim):
+   - `hall_intent_post(taskId, agentId, files, boundaries, acceptanceCriteria)`
+   - `acceptanceCriteria` is mandatory (min 10 chars)
+4. **Claim files** (fails without intent):
+   - `hall_claim(agentId, files, ttlSeconds: 900)`
+   - Rejects with `NO_INTENT` if step 3 was skipped
+
+### After Each File Edit
+
+5. **Log the change**:
+   - `hall_changelog_log(agentId, filePath, changeType, summary)`
+   - Creates searchable history for debugging
+
+### Before Releasing Claims
+
+6. **Attach evidence** (REQUIRED before release):
+   - `hall_evidence_attach(taskId, agentId, command, output)`
+   - No receipts = no release
+7. **Release claims** (fails without evidence):
+   - `hall_claim_release(agentId, files)`
+   - Rejects with `NO_EVIDENCE` if step 6 was skipped
+
+### Debugging
+
+Search changelog to find when issues were introduced:
+- `hall_changelog_search(filePath, query, since, until)`
+
+### Agent Identity
+
+Use a unique agentId like `cursor-{timestamp}` or `cursor-{random}`.
+
+### Conflict Resolution
+
+If files are claimed by another agent:
+- Check `hall_claims_list()` to see current claims
+- Wait or work on unclaimed files
+- Coordinate via intents

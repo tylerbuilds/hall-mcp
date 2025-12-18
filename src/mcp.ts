@@ -50,7 +50,7 @@ const IntentPostInput = z.object({
   agentId: z.string().min(1).max(120).describe('Your agent identifier'),
   files: z.array(z.string().min(1)).min(1).max(200).describe('Files you intend to modify'),
   boundaries: z.string().max(4000).optional().describe('What you promise NOT to change'),
-  acceptanceCriteria: z.string().max(4000).optional().describe('How to verify the work is done')
+  acceptanceCriteria: z.string().min(10).max(4000).describe('REQUIRED: How to verify the work is done (min 10 chars)')
 });
 
 const ClaimCreateInput = z.object({
@@ -73,6 +73,27 @@ const EvidenceAttachInput = z.object({
 
 const OverlapCheckInput = z.object({
   files: z.array(z.string().min(1)).min(1).max(200).describe('Files to check for overlaps')
+});
+
+const ChangelogLogInput = z.object({
+  agentId: z.string().min(1).max(120).describe('Your agent identifier'),
+  filePath: z.string().min(1).describe('File that was changed'),
+  changeType: z.enum(['create', 'modify', 'delete']).describe('Type of change'),
+  summary: z.string().min(1).max(500).describe('Brief description of what changed'),
+  taskId: z.string().optional().describe('Associated task ID'),
+  diffSnippet: z.string().max(5000).optional().describe('Key lines changed (optional)'),
+  commitHash: z.string().max(100).optional().describe('Git commit hash if available')
+});
+
+const ChangelogSearchInput = z.object({
+  filePath: z.string().optional().describe('Filter by file path (partial match)'),
+  agentId: z.string().optional().describe('Filter by agent'),
+  taskId: z.string().optional().describe('Filter by task'),
+  changeType: z.enum(['create', 'modify', 'delete']).optional().describe('Filter by change type'),
+  query: z.string().optional().describe('Search in summary and diff'),
+  since: z.number().optional().describe('Changes after this timestamp'),
+  until: z.number().optional().describe('Changes before this timestamp'),
+  limit: z.number().int().min(1).max(500).default(50).optional().describe('Max results')
 });
 
 // List available tools
@@ -128,7 +149,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'hall_intent_post',
         description:
-          'Post an intent declaring what you plan to change. HALL contract requires posting intent BEFORE editing code. Include files you will touch, boundaries (what you promise NOT to change), and acceptance criteria.',
+          'Post an intent declaring what you plan to change. HALL contract requires posting intent BEFORE claiming files. Include files you will touch, boundaries (what you promise NOT to change), and acceptance criteria. NOTE: acceptanceCriteria is REQUIRED.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -140,15 +161,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: 'Files you intend to modify'
             },
             boundaries: { type: 'string', description: 'What you promise NOT to change (optional)' },
-            acceptanceCriteria: { type: 'string', description: 'How to verify the work is done (optional)' }
+            acceptanceCriteria: { type: 'string', description: 'REQUIRED: How to verify the work is done (min 10 chars)' }
           },
-          required: ['taskId', 'agentId', 'files']
+          required: ['taskId', 'agentId', 'files', 'acceptanceCriteria']
         }
       },
       {
         name: 'hall_claim',
         description:
-          'Claim exclusive access to files. Returns conflicts if another agent already has a claim. Claims expire after TTL. You MUST claim files before editing them.',
+          'Claim exclusive access to files. REQUIRES: You must have posted an intent (hall_intent_post) for these files first. Returns conflicts if another agent already has a claim. Claims expire after TTL.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -165,7 +186,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'hall_claim_release',
-        description: 'Release your claims on files. Call this when you are done editing.',
+        description: 'Release your claims on files. REQUIRES: You must have attached evidence (hall_evidence_attach) before releasing. No receipts = no release.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -217,6 +238,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             }
           },
           required: ['files']
+        }
+      },
+      {
+        name: 'hall_changelog_log',
+        description:
+          'Log a file change to the changelog. Call this AFTER making any file edit to maintain a searchable history of all changes. This enables git-bisect-like debugging to find when issues were introduced.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            agentId: { type: 'string', description: 'Your agent identifier' },
+            filePath: { type: 'string', description: 'File that was changed' },
+            changeType: { type: 'string', enum: ['create', 'modify', 'delete'], description: 'Type of change' },
+            summary: { type: 'string', description: 'Brief description of what changed (max 500 chars)' },
+            taskId: { type: 'string', description: 'Associated task ID (optional)' },
+            diffSnippet: { type: 'string', description: 'Key lines changed (optional, max 5000 chars)' },
+            commitHash: { type: 'string', description: 'Git commit hash if available (optional)' }
+          },
+          required: ['agentId', 'filePath', 'changeType', 'summary']
+        }
+      },
+      {
+        name: 'hall_changelog_search',
+        description:
+          'Search the changelog to find when and how files were changed. Use this to debug issues by tracing file history, finding which agent made changes, or searching for specific modifications.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            filePath: { type: 'string', description: 'Filter by file path (partial match)' },
+            agentId: { type: 'string', description: 'Filter by agent' },
+            taskId: { type: 'string', description: 'Filter by task' },
+            changeType: { type: 'string', enum: ['create', 'modify', 'delete'], description: 'Filter by change type' },
+            query: { type: 'string', description: 'Search in summary and diff' },
+            since: { type: 'number', description: 'Changes after this timestamp (ms)' },
+            until: { type: 'number', description: 'Changes before this timestamp (ms)' },
+            limit: { type: 'number', description: 'Max results (1-500, default 50)' }
+          },
+          required: []
         }
       }
     ]
@@ -278,6 +336,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'hall_claim': {
         const input = ClaimCreateInput.parse(args);
+
+        // ENFORCEMENT: Must have declared intent for these files first
+        const intentCheck = state.hasIntentForFiles(input.agentId, input.files);
+        if (!intentCheck.hasIntent) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    status: 'rejected',
+                    reason: 'NO_INTENT',
+                    message: `You must post an intent (hall_intent_post) before claiming files. Missing intent for: ${intentCheck.missingFiles.join(', ')}`,
+                    missingFiles: intentCheck.missingFiles
+                  },
+                  null,
+                  2
+                )
+              }
+            ],
+            isError: true
+          };
+        }
+
         const result = state.createClaim(input.agentId, input.files, input.ttlSeconds ?? 900);
         if (result.conflictsWith.length > 0) {
           return {
@@ -310,6 +392,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'hall_claim_release': {
         const input = ClaimReleaseInput.parse(args);
+
+        // ENFORCEMENT: Must have attached evidence before releasing claims
+        const activeClaims = state.getAgentClaims(input.agentId);
+        if (activeClaims.length > 0) {
+          const evidenceCheck = state.hasEvidenceForTask(input.agentId);
+          if (!evidenceCheck.hasEvidence) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(
+                    {
+                      status: 'rejected',
+                      reason: 'NO_EVIDENCE',
+                      message: 'You must attach evidence (hall_evidence_attach) proving your work before releasing claims. No receipts = no release.',
+                      activeClaims: activeClaims
+                    },
+                    null,
+                    2
+                  )
+                }
+              ],
+              isError: true
+            };
+          }
+        }
+
         const released = state.releaseClaims(input.agentId, input.files);
         return {
           content: [
@@ -356,6 +465,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                   hasOverlaps: overlaps.length > 0,
                   overlaps,
                   checkedFiles: input.files
+                },
+                null,
+                2
+              )
+            }
+          ]
+        };
+      }
+
+      case 'hall_changelog_log': {
+        const input = ChangelogLogInput.parse(args);
+        const entry = state.logChange(input);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ status: 'logged', entry }, null, 2)
+            }
+          ]
+        };
+      }
+
+      case 'hall_changelog_search': {
+        const input = ChangelogSearchInput.parse(args ?? {});
+        const entries = state.searchChangelog(input);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  count: entries.length,
+                  entries,
+                  filters: input
                 },
                 null,
                 2

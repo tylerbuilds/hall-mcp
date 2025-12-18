@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { Logger } from 'pino';
 import type { HallDb } from '../infra/db';
-import type { Claim, Evidence, Intent, Task } from './types';
+import type { ChangelogEntry, ChangeType, Claim, Evidence, Intent, Task } from './types';
 
 const MAX_OUTPUT_CHARS = 20000;
 
@@ -41,6 +41,18 @@ interface EvidenceRow {
 
 interface CountRow {
   n: number;
+}
+
+interface ChangelogRow {
+  id: string;
+  task_id: string | null;
+  agent_id: string;
+  file_path: string;
+  change_type: string;
+  summary: string;
+  diff_snippet: string | null;
+  commit_hash: string | null;
+  created_at: number;
 }
 
 function now() {
@@ -222,20 +234,168 @@ export class HallState {
     return info.changes;
   }
 
+  /** Check if agent has declared intent for the given files (any intent covering all files) */
+  hasIntentForFiles(agentId: string, files: string[]): { hasIntent: boolean; missingFiles: string[] } {
+    if (files.length === 0) return { hasIntent: true, missingFiles: [] };
+
+    // Get all files this agent has declared intent for
+    const rows = this.db
+      .prepare('SELECT files_json FROM intents WHERE agent_id = ?')
+      .all(agentId) as Array<{ files_json: string }>;
+
+    const declaredFiles = new Set<string>();
+    for (const row of rows) {
+      const intentFiles = JSON.parse(row.files_json) as string[];
+      for (const f of intentFiles) declaredFiles.add(f);
+    }
+
+    const missingFiles = files.filter(f => !declaredFiles.has(f));
+    return { hasIntent: missingFiles.length === 0, missingFiles };
+  }
+
+  /** Check if agent has attached evidence for a task */
+  hasEvidenceForTask(agentId: string): { hasEvidence: boolean; taskIds: string[] } {
+    const rows = this.db
+      .prepare('SELECT DISTINCT task_id FROM evidence WHERE agent_id = ?')
+      .all(agentId) as Array<{ task_id: string }>;
+
+    return { hasEvidence: rows.length > 0, taskIds: rows.map(r => r.task_id) };
+  }
+
+  /** Get agent's active claims */
+  getAgentClaims(agentId: string): string[] {
+    this.pruneExpiredClaims();
+    const rows = this.db
+      .prepare('SELECT file_path FROM claims WHERE agent_id = ?')
+      .all(agentId) as Array<{ file_path: string }>;
+    return rows.map(r => r.file_path);
+  }
+
   status() {
     this.pruneExpiredClaims();
     const taskCount = (this.db.prepare('SELECT COUNT(1) AS n FROM tasks').get() as CountRow | undefined)?.n ?? 0;
     const intentCount = (this.db.prepare('SELECT COUNT(1) AS n FROM intents').get() as CountRow | undefined)?.n ?? 0;
     const claimCount = (this.db.prepare('SELECT COUNT(1) AS n FROM claims').get() as CountRow | undefined)?.n ?? 0;
     const evidenceCount = (this.db.prepare('SELECT COUNT(1) AS n FROM evidence').get() as CountRow | undefined)?.n ?? 0;
+    const changelogCount = (this.db.prepare('SELECT COUNT(1) AS n FROM changelog').get() as CountRow | undefined)?.n ?? 0;
 
     return {
       tasks: taskCount,
       intents: intentCount,
       claims: claimCount,
       evidence: evidenceCount,
+      changelog: changelogCount,
       now: now()
     };
+  }
+
+  /** Log a file change to the changelog for debugging/tracing */
+  logChange(input: {
+    taskId?: string;
+    agentId: string;
+    filePath: string;
+    changeType: ChangeType;
+    summary: string;
+    diffSnippet?: string;
+    commitHash?: string;
+  }): ChangelogEntry {
+    const entry: ChangelogEntry = {
+      id: nanoid(12),
+      taskId: input.taskId,
+      agentId: input.agentId,
+      filePath: input.filePath,
+      changeType: input.changeType,
+      summary: input.summary,
+      diffSnippet: input.diffSnippet ? clipOutput(input.diffSnippet) : undefined,
+      commitHash: input.commitHash,
+      createdAt: now()
+    };
+
+    this.db
+      .prepare(
+        'INSERT INTO changelog (id, task_id, agent_id, file_path, change_type, summary, diff_snippet, commit_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        entry.id,
+        entry.taskId ?? null,
+        entry.agentId,
+        entry.filePath,
+        entry.changeType,
+        entry.summary,
+        entry.diffSnippet ?? null,
+        entry.commitHash ?? null,
+        entry.createdAt
+      );
+
+    return entry;
+  }
+
+  /** Search changelog entries */
+  searchChangelog(options: {
+    filePath?: string;
+    agentId?: string;
+    taskId?: string;
+    changeType?: ChangeType;
+    since?: number;
+    until?: number;
+    query?: string;
+    limit?: number;
+  }): ChangelogEntry[] {
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+
+    if (options.filePath) {
+      conditions.push('file_path LIKE ?');
+      params.push(`%${options.filePath}%`);
+    }
+    if (options.agentId) {
+      conditions.push('agent_id = ?');
+      params.push(options.agentId);
+    }
+    if (options.taskId) {
+      conditions.push('task_id = ?');
+      params.push(options.taskId);
+    }
+    if (options.changeType) {
+      conditions.push('change_type = ?');
+      params.push(options.changeType);
+    }
+    if (options.since) {
+      conditions.push('created_at >= ?');
+      params.push(options.since);
+    }
+    if (options.until) {
+      conditions.push('created_at <= ?');
+      params.push(options.until);
+    }
+    if (options.query) {
+      conditions.push('(summary LIKE ? OR diff_snippet LIKE ?)');
+      params.push(`%${options.query}%`, `%${options.query}%`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = options.limit ?? 100;
+
+    const rows = this.db
+      .prepare(`SELECT * FROM changelog ${whereClause} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as ChangelogRow[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      taskId: r.task_id ?? undefined,
+      agentId: r.agent_id,
+      filePath: r.file_path,
+      changeType: r.change_type as ChangeType,
+      summary: r.summary,
+      diffSnippet: r.diff_snippet ?? undefined,
+      commitHash: r.commit_hash ?? undefined,
+      createdAt: r.created_at
+    }));
+  }
+
+  /** Get file history - all changes to a specific file */
+  getFileHistory(filePath: string, limit = 50): ChangelogEntry[] {
+    return this.searchChangelog({ filePath, limit });
   }
 
   private pruneExpiredClaims() {
