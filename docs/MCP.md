@@ -1,4 +1,4 @@
-# HALL MCP Server
+# HALL Server (MCP)
 
 This guide explains how to use HALL with AI coding agents via the Model Context Protocol (MCP).
 

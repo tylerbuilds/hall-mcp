@@ -2,7 +2,7 @@
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }

@@ -1,12 +1,12 @@
-# HALL MCP - IDE Setup Guide
+# HALL - IDE Setup Guide
 
-This guide explains how to configure HALL MCP for different AI coding assistants.
+This guide explains how to configure HALL for different AI coding assistants.
 
 ## Prerequisites
 
-1. Build HALL MCP:
+1. Build HALL:
    ```bash
-   cd /path/to/HALL-MCP
+   cd /path/to/hall-mcp
    npm install
    npx tsc -p tsconfig.json
    ```
@@ -21,7 +21,7 @@ This guide explains how to configure HALL MCP for different AI coding assistants
 
 ### Option 1: CLI (Recommended)
 ```bash
-claude mcp add hall --command "node" --args "/path/to/HALL MCP/dist/mcp.js" --scope user
+claude mcp add hall --command "node" --args "/path/to/hall-mcp/dist/mcp.js" --scope user
 ```
 
 ### Option 2: Manual (add to ~/.claude.json)
@@ -30,7 +30,7 @@ claude mcp add hall --command "node" --args "/path/to/HALL MCP/dist/mcp.js" --sc
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -42,7 +42,7 @@ claude mcp add hall --command "node" --args "/path/to/HALL MCP/dist/mcp.js" --sc
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -62,7 +62,7 @@ claude mcp add hall --command "node" --args "/path/to/HALL MCP/dist/mcp.js" --sc
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -87,7 +87,7 @@ mkdir -p ~/.cursor
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -113,7 +113,7 @@ mkdir -p ~/.cursor
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -139,7 +139,7 @@ mkdir -p ~/.config/opencode
     {
       "name": "hall",
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   ]
 }
@@ -182,7 +182,7 @@ For per-project HALL setup, create `.mcp.json` in your project root:
   "mcpServers": {
     "hall": {
       "command": "node",
-      "args": ["/path/to/HALL MCP/dist/mcp.js"]
+      "args": ["/path/to/hall-mcp/dist/mcp.js"]
     }
   }
 }
@@ -201,12 +201,12 @@ For automatic startup on reboot:
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/hall.service << 'EOF'
 [Unit]
-Description=HALL MCP Server
+Description=HALL Server
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/node /path/to/HALL MCP/dist/index.js
+ExecStart=/usr/bin/node /path/to/hall-mcp/dist/index.js
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
@@ -244,5 +244,5 @@ If your HALL path contains spaces, the JSON config handles it automatically. No 
 ### Check logs
 Run HALL manually to see errors:
 ```bash
-node "/path/to/HALL MCP/dist/mcp.js"
+node "/path/to/hall-mcp/dist/mcp.js"
 ```
